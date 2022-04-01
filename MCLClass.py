@@ -1,5 +1,7 @@
+from numpy.lib.function_base import angle
 from ParticleClass import *
 import matplotlib.pyplot as plt
+from scipy.stats import truncnorm, uniform
 import numpy as np
 import random
 import math
@@ -33,6 +35,12 @@ class MCL(object):
 
         # Classifier model
         self.model = classifier
+
+        # Frozen stat distributions
+        self.trunc_norm = truncnorm(0,1,1,1)
+        self.uniform = uniform(0,1)
+        self.tn_scale = 0.8
+        self.un_scale = 0.2
 
         # Error statistics collection
         self.euc_error = []
@@ -190,25 +198,34 @@ class MCL(object):
         ESS = 1.0/np.inner(weights,weights)
         return ESS
 
-    def point_likelihood_model(self, particle_pose, measurement):
+    def point_likelihood_model(self, particle_pose, measurement, nbr_scans = 8):
         """ Observation model which classifies the end point of the measurements 
         :param particle_pose: The position and heading of the particle
         :param measurement: List of the range scans
         :returns: Likelihood of measurements
         """
-        scan_nbr = len(measurement)
-        increment = 2 * math.pi / scan_nbr
-        measurement_headings = np.arange(0,2*math.pi, increment).tolist()
+        const_2_pi = 2 * math.pi
+        angle_increment = const_2_pi / nbr_scans
+        list_increment = int(360 / nbr_scans)
+        measurement_headings = np.arange(0, const_2_pi, angle_increment).tolist()
         points = np.empty((0,2))
-        for i in range(len(measurement)):
-            heading = (self.pose[2] + measurement_headings[i]) % (2 * math.pi)
-            point_x = particle_pose[0] + math.cos(heading) * measurement[i]
-            point_y = particle_pose[1] + math.sin(heading) * measurement[i]
-            point = np.array([[point_x,point_y]])
-            points = np.append(points, point, axis=0)
+        for i in range(nbr_scans):
+            x = i * list_increment
+
+            # Discard measurements outside of range
+            if measurement[x] < 40: #TODO: specify as parameter instead
+                heading = (self.pose[2] + measurement_headings[i]) % const_2_pi
+                point_x = particle_pose[0] + math.cos(heading) * measurement[x]
+                point_y = particle_pose[1] + math.sin(heading) * measurement[x]
+                point = np.array([[point_x,point_y]])
+                points = np.append(points, point, axis=0)
 
         p = self.model.classify(points)
-        q = np.prod(p[:,0])
+        p_list = []
+        for i in p[:,0]:
+            p_list.append(self.trunc_norm.cdf(i) * self.tn_scale + self.uniform.cdf(i) * self.un_scale)
+
+        q = np.prod(p_list)
         return q
         
 

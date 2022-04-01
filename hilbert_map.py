@@ -121,6 +121,18 @@ class IncrementalHilbertMap(object):
         scaled_data = self.scaler.transform(rbf_data)
         self.classifier.partial_fit(scaled_data, labels, classes=[0, 1])
 
+    def classify(self, query):
+        """Returns the probabilistic prediction for the given data points.
+
+        :param query the data points to perform predictions on
+        :return predicted values for the given inputs
+        """
+        if self.use_rkhs:
+            kernel = self.rkhs_data(query)
+        else:
+            kernel = rbf_kernel(query, self.centers, self.gamma)
+        return self.classifier.predict_proba(kernel)
+
 
 class SparseHilbertMap(object):
 

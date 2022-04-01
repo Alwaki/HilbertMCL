@@ -1,10 +1,10 @@
 #Test running shit
-import argparse
 import copy
 import math
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
+import time
 
 import hilbert_map as hm
 import util
@@ -41,9 +41,19 @@ centers = util.sampling_coordinates(xlim, ylim, components)
 # Create model
 model = hm.SparseHilbertMap(centers, gamma, distance_cutoff)
 
- # Train the model with the data
-count = 0
+#model = hm.IncrementalHilbertMap("fourier", 100, 3.0, True)
 
+time1 = time.time()
+# Fit the feature to the dataset
+"""
+training_data = []
+for data, label in util.data_generator(poses, scans):
+    training_data.extend(data)
+model.fit(np.array(training_data))
+"""
+
+# Train the model with the data
+count = 0
 
 for data, label in util.data_generator(poses, scans):
     model.add(data, label)
@@ -52,6 +62,9 @@ for data, label in util.data_generator(poses, scans):
     sys.stdout.flush()
     count += 1
 print("")
+time2 = time.time()
+dt = (time2 - time1)
+print("Training full data points took " + str(dt) + " seconds.")
 
 
 
@@ -63,10 +76,25 @@ print("")
 poses2 = test_data["poses"]
 scans2 = test_data["scans"]
 
-"""
-# Benchmark classifier time
-import time
 
+# Benchmark classifier time
+
+"""
+query1 = np.random.rand(10,2) * 20
+query2 = np.random.rand(10,2) * 20
+query3 = np.random.rand(20,2) * 20
+time1 = time.time()
+model.classify(query1)
+model.classify(query2)
+time2 = time.time()
+dt1 = time2 - time1
+time1 = time.time()
+model.classify(query3)
+time2 = time.time()
+dt2 = time2 - time1
+print("Sequential classification took: " + str(dt1) + "s, while batch took: " + str(dt2) + "s.")
+"""
+"""
 times = []
 for i in range(500):
     query_list = np.random.rand(i+1,2) * 20
@@ -113,7 +141,8 @@ for line in open(logfile):
 
 # Initialize filter
 
-mcl = MCL(xlim, ylim, 100, model, [0, 0, 0])
+
+mcl = MCL(xlim, ylim, 50, model, [0, 0, 0])
 mcl.simulate(logfile, False)
 print("Euclidean error sum: " + str(np.sum(mcl.euc_error)))
 plt.plot(mcl.euc_error)
