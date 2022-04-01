@@ -36,11 +36,12 @@ class MCL(object):
         # Classifier model
         self.model = classifier
 
-        # Frozen stat distributions
-        self.trunc_norm = truncnorm(0,1,1,1)
-        self.uniform = uniform(0,1)
-        self.tn_scale = 0.8
-        self.un_scale = 0.2
+        # Truncated normal parameters
+        self.tn_std = 0.5
+        self.tn_mean = 1
+        self.a_clip = 0
+        self.b_clip = 1
+        self.a, self.b = (self.a_clip - self.tn_mean) / self.tn_std, (self.b_clip - self.tn_mean) / self.tn_std
 
         # Error statistics collection
         self.euc_error = []
@@ -112,6 +113,7 @@ class MCL(object):
                 screen = (self.map_limits[0], self.map_limits[2], dx, dy)
                 plt.axes(screen)"""
                 plt.scatter(x_list, y_list)
+                plt.scatter(self.pose[0],self.pose[1])
                 plt.pause(0.05)
     
         if(plot_flag):
@@ -151,7 +153,7 @@ class MCL(object):
                 # Calculate importance weight
                 """self.particles[i].weight = self.beam_likelihood_model(self.particles[i].pose,
                                                                       measurement, headings)"""
-                self.particles[i].weight = self.point_likelihood_model(self.particles[i].pose,
+                self.particles[i].weight *= self.point_likelihood_model(self.particles[i].pose,
                                                                        measurement)
 
     def sample_motion_model_odometry(self, new_odom, particle_pose):
@@ -223,7 +225,7 @@ class MCL(object):
         p = self.model.classify(points)
         p_list = []
         for i in p[:,0]:
-            p_list.append(self.trunc_norm.cdf(i) * self.tn_scale + self.uniform.cdf(i) * self.un_scale)
+            p_list.append(truncnorm.pdf(i, self.a,self.b, loc=self.tn_mean, scale=self.tn_std))
 
         q = np.prod(p_list)
         return q

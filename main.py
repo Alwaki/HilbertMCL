@@ -142,7 +142,7 @@ for line in open(logfile):
 # Initialize filter
 
 
-mcl = MCL(xlim, ylim, 50, model, [0, 0, 0])
+mcl = MCL(xlim, ylim, 5, model, [0, 0, 0])
 mcl.simulate(logfile, False)
 print("Euclidean error sum: " + str(np.sum(mcl.euc_error)))
 plt.plot(mcl.euc_error)
