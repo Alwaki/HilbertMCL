@@ -1,5 +1,6 @@
 from numpy.lib.function_base import angle
 from ParticleClass import *
+import util
 import matplotlib.pyplot as plt
 from scipy.stats import truncnorm, uniform
 import numpy as np
@@ -30,7 +31,7 @@ class MCL(object):
         # Filter parameters
         self.nbr_particles = nbr_particles
         self.alpha = alpha
-        self.ray_resolution = 0.1   # TODO: check these two
+        self.ray_resolution = 0.4   # TODO: check these two
         self.sensor_variance = 0.1
 
         # Classifier model
@@ -46,6 +47,12 @@ class MCL(object):
         # Error statistics collection
         self.euc_error = []
         self.ang_error = []
+        self.x_path = []
+        self.y_path = []
+        self.x_odom = []
+        self.y_odom = []
+        self.x_truth = []
+        self.y_truth = []
         
         # Initialize particle set, either by given pose or global distribution
         weight = 1.0 / self.nbr_particles
@@ -58,7 +65,7 @@ class MCL(object):
                 self.particles.append(p)
         else:
             for i in range(self.nbr_particles):
-                p = Particle([0, 0, 0],weight)
+                p = Particle(self.pose,weight)
                 self.particles.append(p)
 
     def simulate(self, logfile, plot_flag = False):
@@ -74,6 +81,7 @@ class MCL(object):
                 count = int(arr[1])
                 scans = [float(v) for v in arr[2:2+count]]
                 ground_truth = [float(v) for v in arr[-9:-6]]
+                ground_truth[2] = util.normalize_angle(ground_truth[2])
 
                 # Use scans for bayesian correction update
                 self.propagate(1, scans)
@@ -90,6 +98,8 @@ class MCL(object):
                 angular_error = abs(ground_truth[2]-self.pose[2])
                 self.euc_error.append(euclidean_error)
                 self.ang_error.append(angular_error)
+                self.x_truth.append(ground_truth[0])
+                self.y_truth.append(ground_truth[1])
 
                 # Display error
                 print("Euclidean Error: " + str(self.euc_error[-1]))
@@ -97,11 +107,16 @@ class MCL(object):
             if line.startswith("ODOM"):
                 arr = line.split()
                 odom = [float(v) for v in arr[1:4]]
+                odom[2] = util.normalize_angle(odom[2])
+                self.x_odom.append(odom[0])
+                self.y_odom.append(odom[1])
                 self.propagate(0,odom)
                 particle_weights = [o.weight for o in self.particles]
                 max_weight = max(particle_weights)
                 max_idx = particle_weights.index(max_weight)
                 self.pose = self.particles[max_idx].pose
+                self.x_path.append(self.pose[0])
+                self.y_path.append(self.pose[1])
 
             # Visualization
             if(plot_flag):
@@ -130,6 +145,7 @@ class MCL(object):
 
         # Motion update
         if type == 0:
+
             
             # Initialize odometry
             if not self.prev_odom:
@@ -144,17 +160,19 @@ class MCL(object):
                 
                 self.prev_odom = [measurement[0], measurement[1],measurement[2]]
 
-
-
         # Observation update
         if type == 1:
+            
             for i in range(self.nbr_particles):
 
                 # Calculate importance weight
-                """self.particles[i].weight = self.beam_likelihood_model(self.particles[i].pose,
-                                                                      measurement, headings)"""
+                """
                 self.particles[i].weight *= self.point_likelihood_model(self.particles[i].pose,
                                                                        measurement)
+                                                                       """
+                self.particles[i].weight *= self.beam_likelihood_model(self.particles[i].pose, measurement)
+            
+                
 
     def sample_motion_model_odometry(self, new_odom, particle_pose):
         """ Samples a new robot pose according to odometry motion model
@@ -167,28 +185,43 @@ class MCL(object):
         """
         d_rot_1     = math.atan2(new_odom[1] - self.prev_odom[1], 
                              new_odom[0] - self.prev_odom[0]) - self.prev_odom[2]
+
         d_trans     = math.hypot(self.prev_odom[0] - new_odom[0],
                              self.prev_odom[1] - new_odom[1])
+
         d_rot_2     = new_odom[2] - self.prev_odom[2] - d_rot_1
 
         d_rot_1_hat = d_rot_1 - random.gauss(0, self.alpha[0] * pow(d_rot_1, 2) + 
                                              self.alpha[1] * pow(d_trans, 2))
+
         d_trans_hat = d_trans - random.gauss(0, self.alpha[2] * pow(d_trans, 2) + 
                                              self.alpha[3] * pow(d_rot_1, 2) + 
                                              self.alpha[3] * pow(d_rot_2, 2))
+
         d_rot_2_hat = d_rot_2 - random.gauss(0, self.alpha[0] * pow(d_rot_2, 2) + 
                                              self.alpha[1] * pow(d_trans, 2))
+
         x     = particle_pose[0] + d_trans_hat * math.cos(particle_pose[2] + d_rot_1_hat)
         y     = particle_pose[1] + d_trans_hat * math.sin(particle_pose[2] + d_rot_1_hat)
-        theta = (particle_pose[2] + d_rot_1_hat + d_rot_2_hat) % (2 * math.pi)
+        theta = (particle_pose[2] + d_rot_1_hat + d_rot_2_hat)
+        theta = util.normalize_angle(theta)
         return [x, y, theta]
 
     def normalize_weights(self):
         """ Re-scales the particle weights so that the sum equals one """
         weights = [o.weight for o in self.particles]
-        scale_factor = 1.0/np.sum(weights)
-        for particle in self.particles:
-            particle.weight *= scale_factor
+        denominator = np.sum(weights)
+
+        # Control against division by zero, recover by resetting weight
+        if denominator == 0:
+            scale_factor = 1.0/self.nbr_particles
+            for particle in self.particles:
+                particle.weight = scale_factor
+
+        else:
+            scale_factor = 1.0/denominator
+            for particle in self.particles:
+                particle.weight *= scale_factor
 
     def calculate_ESS(self):
         """ Calculates the effective sample size of particle set 
@@ -231,21 +264,27 @@ class MCL(object):
         return q
         
 
-    def beam_likelihood_model(self, particle_pose, measurement_distances, measurement_headings):
+    def beam_likelihood_model(self, particle_pose, measurement_distances, nbr_scans = 8):
         """ """
+        const_2_pi = 2 * math.pi
+        angle_increment = const_2_pi / nbr_scans
+        list_increment = int(360 / nbr_scans)
         n = 1.0 / math.sqrt(2 * math.pi * self.sensor_variance)
         expected_distances = []
         p = []
 
         # Calculate expected distances through raycasting
-        for theta in measurement_headings:
-            heading = (self.pose[2] + theta) % (2 * math.pi)
+        for i in range(nbr_scans):
+            theta = i * angle_increment
+            heading = (self.pose[2] + theta)
+            heading = util.normalize_angle(heading)
             expected_distance = self.raycast(particle_pose[0:2], heading, self.ray_resolution)
             expected_distances.append(expected_distance)
 
         # Calculate likelihoods through beam hit model
-        for i in range(len(measurement_distances)):
-            p.append(n * math.exp(- pow(measurement_distances[i] - expected_distances[i], 2) / (2 * n)))
+        for i in range(nbr_scans):
+            x = i * list_increment
+            p.append(n * math.exp(- pow(measurement_distances[x] - expected_distances[i], 2) / (2 * n)))
 
         return math.prod(p)
 
@@ -279,16 +318,16 @@ class MCL(object):
         dy = resolution * math.sin(heading)
         position = np.reshape(starting_position, [1, -1])
         count = 0
-        while(count < 1000):
+        while(count < 50):
             position[0][0] += dx
             position[0][1] += dy
             probability = self.model.classify(position)
             count += 1
-            if probability[0][0] >= 0.99:
+            if probability[0][0] >= 0.98:
                 distance = math.hypot(position[0][0]-starting_position[0], position[0][1] - starting_position[1])
                 return distance
 
-        return 100
+        return 40
                 
 
 
