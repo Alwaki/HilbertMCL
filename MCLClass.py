@@ -1,4 +1,3 @@
-from numpy.lib.function_base import angle
 from ParticleClass import *
 import util
 import matplotlib.pyplot as plt
@@ -166,11 +165,11 @@ class MCL(object):
             for i in range(self.nbr_particles):
 
                 # Calculate importance weight
-                """
-                self.particles[i].weight *= self.point_likelihood_model(self.particles[i].pose,
-                                                                       measurement)
-                                                                       """
+                
+                self.particles[i].weight *= self.point_likelihood_model(self.particles[i].pose, measurement)
+                """                                             
                 self.particles[i].weight *= self.beam_likelihood_model(self.particles[i].pose, measurement)
+                """
             
                 
 
@@ -191,15 +190,15 @@ class MCL(object):
 
         d_rot_2     = new_odom[2] - self.prev_odom[2] - d_rot_1
 
-        d_rot_1_hat = d_rot_1 - random.gauss(0, self.alpha[0] * pow(d_rot_1, 2) + 
-                                             self.alpha[1] * pow(d_trans, 2))
+        d_rot_1_hat = d_rot_1 #- random.gauss(0, self.alpha[0] * pow(d_rot_1, 2) + 
+                              #              self.alpha[1] * pow(d_trans, 2))
 
-        d_trans_hat = d_trans - random.gauss(0, self.alpha[2] * pow(d_trans, 2) + 
-                                             self.alpha[3] * pow(d_rot_1, 2) + 
-                                             self.alpha[3] * pow(d_rot_2, 2))
+        d_trans_hat = d_trans #- random.gauss(0, self.alpha[2] * pow(d_trans, 2) + 
+                              #               self.alpha[3] * pow(d_rot_1, 2) + 
+                              #               self.alpha[3] * pow(d_rot_2, 2))
 
-        d_rot_2_hat = d_rot_2 - random.gauss(0, self.alpha[0] * pow(d_rot_2, 2) + 
-                                             self.alpha[1] * pow(d_trans, 2))
+        d_rot_2_hat = d_rot_2 #- random.gauss(0, self.alpha[0] * pow(d_rot_2, 2) + 
+                              #               self.alpha[1] * pow(d_trans, 2))
 
         x     = particle_pose[0] + d_trans_hat * math.cos(particle_pose[2] + d_rot_1_hat)
         y     = particle_pose[1] + d_trans_hat * math.sin(particle_pose[2] + d_rot_1_hat)
@@ -240,16 +239,17 @@ class MCL(object):
         :returns: Likelihood of measurements
         """
         const_2_pi = 2 * math.pi
-        angle_increment = const_2_pi / nbr_scans
+        angle_increment = math.pi / nbr_scans
+        #angle_increment = const_2_pi / nbr_scans
         list_increment = int(360 / nbr_scans)
-        measurement_headings = np.arange(0, const_2_pi, angle_increment).tolist()
         points = np.empty((0,2))
         for i in range(nbr_scans):
             x = i * list_increment
 
             # Discard measurements outside of range
             if measurement[x] < 40: #TODO: specify as parameter instead
-                heading = (self.pose[2] + measurement_headings[i]) % const_2_pi
+                heading = util.normalize_angle(self.pose[2] - math.pi + i * angle_increment + (math.pi / 2.0))
+                #heading = (self.pose[2] + measurement_headings[i]) % const_2_pi
                 point_x = particle_pose[0] + math.cos(heading) * measurement[x]
                 point_y = particle_pose[1] + math.sin(heading) * measurement[x]
                 point = np.array([[point_x,point_y]])
@@ -290,16 +290,18 @@ class MCL(object):
 
     def resample(self):
         """ Resamples the particle set according to importance weights """
-        r = random.uniform(0.0, 1.0/self.nbr_particles)
+        factor = 1.0 / self.nbr_particles
+        r = random.uniform(0.0, factor)
         aux_particles = []
         c = self.particles[0].weight
         i = 0
         for m in range(self.nbr_particles):
-            U = r + m/self.nbr_particles
+            U = r + m * factor
             while U > c:
                 i += 1
                 c += self.particles[i].weight
             particle = copy.copy(self.particles[i])
+            particle.weight = factor
             aux_particles.append(particle)
         self.particles = aux_particles.copy()
 
