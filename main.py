@@ -1,4 +1,9 @@
-#Test running shit
+#########################################################
+#
+#                   Imports
+#
+#########################################################
+
 import copy
 import math
 import matplotlib.pyplot as plt
@@ -10,9 +15,11 @@ import hilbert_map as hm
 import util
 from MCLClass import *
 
-####################################
-# Create a model!
-###################################
+#########################################################
+#
+#                   Model/data Setup
+#
+#########################################################
 
 
 # Variables
@@ -44,6 +51,7 @@ model = hm.SparseHilbertMap(centers, gamma, distance_cutoff)
 #model = hm.IncrementalHilbertMap("fourier", 100, 3.0, True)
 
 time1 = time.time()
+
 # Fit the feature to the dataset
 """
 training_data = []
@@ -52,8 +60,13 @@ for data, label in util.data_generator(poses, scans):
 model.fit(np.array(training_data))
 """
 
-# Train the model with the data
+#########################################################
+#
+#                   Train model
+#
+#########################################################
 count = 0
+
 
 for data, label in util.data_generator(poses, scans):
     model.add(data, label)
@@ -77,7 +90,11 @@ poses2 = test_data["poses"]
 scans2 = test_data["scans"]
 
 
-# Benchmark classifier time
+#########################################################
+#
+#                   Benchmarks
+#
+#########################################################
 
 """
 query1 = np.random.rand(10,2) * 20
@@ -137,14 +154,55 @@ for line in open(logfile):
     """
 
 
+#########################################################
+#
+#                   Unit tests
+#
+#########################################################
+
+"""
+mcl = MCL(xlim, ylim, 4, model, [0, 0, 0])
+print(str([o.weight for o in mcl.particles]))
+ESS = mcl.calculate_ESS()
+print(str(ESS))
+for i in mcl.particles:
+    i.weight = 0
+mcl.particles[0].weight = 0.1
+mcl.particles[1].weight = 0.7
+mcl.particles[2].weight = 0.1
+mcl.particles[3].weight = 0.1
+print(str([o.weight for o in mcl.particles]))
+mcl.normalize_weights()
+print(str([o.weight for o in mcl.particles]))
+ESS = mcl.calculate_ESS()
+print(str(ESS))
+if ESS < mcl.nbr_particles/2:
+    mcl.resample()
+
+"""
 
 
-# Initialize filter
 
 
-mcl = MCL(xlim, ylim, 5, model, [0, 0, 0])
-mcl.simulate(logfile, False)
+#########################################################
+#
+#                   Initialize filter
+#
+#########################################################
+
+mcl = MCL(xlim, ylim, 50, model, [0, 0, 0])
+mcl.simulate(logfile, True)
+
+
 print("Euclidean error sum: " + str(np.sum(mcl.euc_error)))
+"""
 plt.plot(mcl.euc_error)
 plt.ylabel('Error [m]')
+plt.show()
+"""
+
+
+plt.plot(mcl.x_path,mcl.y_path)
+plt.plot(mcl.x_odom, mcl.y_odom)
+plt.plot(mcl.x_truth,mcl.y_truth)
 plt.show()
