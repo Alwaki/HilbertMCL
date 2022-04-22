@@ -94,7 +94,7 @@ def bresenham(start_point, end_point):
             if err < 0:
                 x += sx
                 err += dy
-            y += sy
+            y += sy        
     coords.append((x, y))
 
     return coords
@@ -204,7 +204,7 @@ def create_test_train_split(logfile, percentage=0.1, sequence_length=40):
     """
     # Parse the logfile
     poses, scans = parse_carmen_log(logfile)
-
+    
     # Create training and testing splits
     groups = int((len(poses)*percentage) / sequence_length)
     test_indices = []
@@ -246,7 +246,6 @@ def create_test_data(logfile):
             training["scans"].append(scans[i])
 
     return training
-
 
 def sparsify_scans(logfile, percent_removed):
     """Removes a fixed percentage of readings from every scan.
@@ -384,7 +383,7 @@ def data_generator(poses, scans, step=1):
                 continue
 
             angle = normalize_angle(
-                    pose[2] - math.pi + i * angle_increment + (math.pi / 2.0)
+                    pose[2] + i * angle_increment - (math.pi / 2.0)
             )
 
             # Add laser endpoint
@@ -401,3 +400,50 @@ def data_generator(poses, scans, step=1):
                 labels.append(0)
 
         yield np.array(points), np.array(labels)
+
+def generate_map(model, resolution, limits, fname, verbose=True):
+    """Generates a grid map by querying the model at cell locations.
+
+    :param model the hilbert map model to use
+    :param resolution the resolution of the produced grid map
+    :param limits the limits of the grid map
+    :param fname the name of the file in which to store the final grid map
+    :param verbose print progress if True
+    """
+    # Determine query point locations
+    x_count = int(math.ceil((limits[1] - limits[0]) / resolution))
+    y_count = int(math.ceil((limits[3] - limits[2]) / resolution))
+    sample_coords = []
+    for x in range(x_count):
+        for y in range(y_count):
+            sample_coords.append((limits[0] + x*resolution, limits[2] + y*resolution))
+
+    # Obtain predictions in a batch fashion
+    predictions = []
+    offset = 0
+    batch_size = 100
+    old_intercept = copy.deepcopy(model.classifier.intercept_)
+    model.classifier.intercept_ = 0.1 * model.classifier.intercept_
+    while offset < len(sample_coords):
+        if isinstance(model, hm.IncrementalHilbertMap):
+            query = model.sampler.transform(sample_coords[offset:offset+batch_size])
+            predictions.extend(model.classifier.predict_proba(query)[:, 1])
+        elif isinstance(model, hm.SparseHilbertMap):
+            predictions.extend(model.classify(sample_coords[offset:offset+batch_size])[:, 1])
+
+        if verbose:
+            sys.stdout.write("\rQuerying model: {: 6.2f}%".format(offset / float(len(sample_coords)) * 100))
+            sys.stdout.flush()
+        offset += batch_size
+    if verbose:
+        print("")
+    predictions = np.array(predictions)
+    model.classifier.intercept_ = old_intercept
+
+    # Turn predictions into a matrix for visualization
+    mat = predictions.reshape(x_count, y_count)
+    plt.clf()
+    plt.title("Occupancy map")
+    plt.imshow(mat.transpose()[::-1, :], cmap='binary')
+    plt.colorbar()
+    plt.savefig(fname)
