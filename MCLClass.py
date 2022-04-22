@@ -259,7 +259,7 @@ class MCL(object):
         p = self.model.classify(points)
         p_list = []
         sensor_failure_likelihood = 0.002 #TODO: remove hardcoding from uniform distribution
-        for i in p[:,0]:
+        for i in p[:,1]:
             hit_likelihood = truncnorm.pdf(i, self.a,self.b, loc=self.tn_mean, scale=self.tn_std)
             if hit_likelihood < sensor_failure_likelihood:
                 p_list.append(sensor_failure_likelihood)
@@ -288,8 +288,7 @@ class MCL(object):
 
     def beam_likelihood_model(self, particle_pose, measurement_distances, nbr_scans = 8):
         """ """
-        const_2_pi = 2 * math.pi
-        angle_increment = const_2_pi / nbr_scans
+        angle_increment = math.pi / nbr_scans
         list_increment = int(360 / nbr_scans)
         n = 1.0 / math.sqrt(2 * math.pi * self.sensor_variance)
         expected_distances = []
@@ -298,7 +297,7 @@ class MCL(object):
         # Calculate expected distances through raycasting
         for i in range(nbr_scans):
             theta = i * angle_increment
-            heading = (self.pose[2] + theta)
+            heading = (self.pose[2] + theta - (math.pi / 2))
             heading = util.normalize_angle(heading)
             expected_distance = self.raycast(particle_pose[0:2], heading, self.ray_resolution)
             expected_distances.append(expected_distance)
