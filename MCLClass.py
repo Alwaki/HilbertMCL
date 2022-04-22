@@ -30,14 +30,14 @@ class MCL(object):
         # Filter parameters
         self.nbr_particles = nbr_particles
         self.alpha = alpha
-        self.ray_resolution = 0.4   # TODO: check these two
-        self.sensor_variance = 0.1
+        self.ray_resolution = 0.5
+        self.sensor_variance = 0.001
 
         # Classifier model
         self.model = classifier
 
         # Truncated normal parameters
-        self.tn_std = 0.5
+        self.tn_std = math.sqrt(self.sensor_variance)
         self.tn_mean = 1
         self.a_clip = 0
         self.b_clip = 1
@@ -126,8 +126,12 @@ class MCL(object):
                 dy = self.map_limits[3] - self.map_limits[2]
                 screen = (self.map_limits[0], self.map_limits[2], dx, dy)
                 plt.axes(screen)"""
+                plt.xlim([self.map_limits[0],self.map_limits[1]])
+                plt.ylim([self.map_limits[2],self.map_limits[3]])
                 plt.scatter(x_list, y_list)
                 plt.scatter(self.pose[0],self.pose[1])
+                if self.x_truth:
+                    plt.scatter(self.x_truth,self.y_truth)
                 plt.pause(0.05)
     
         if(plot_flag):
@@ -190,15 +194,15 @@ class MCL(object):
 
         d_rot_2     = new_odom[2] - self.prev_odom[2] - d_rot_1
 
-        d_rot_1_hat = d_rot_1 #- random.gauss(0, self.alpha[0] * pow(d_rot_1, 2) + 
-                              #              self.alpha[1] * pow(d_trans, 2))
+        d_rot_1_hat = d_rot_1 - random.gauss(0, self.alpha[0] * pow(d_rot_1, 2) + 
+                                            self.alpha[1] * pow(d_trans, 2))
 
-        d_trans_hat = d_trans #- random.gauss(0, self.alpha[2] * pow(d_trans, 2) + 
-                              #               self.alpha[3] * pow(d_rot_1, 2) + 
-                              #               self.alpha[3] * pow(d_rot_2, 2))
+        d_trans_hat = d_trans - random.gauss(0, self.alpha[2] * pow(d_trans, 2) + 
+                                             self.alpha[3] * pow(d_rot_1, 2) + 
+                                             self.alpha[3] * pow(d_rot_2, 2))
 
-        d_rot_2_hat = d_rot_2 #- random.gauss(0, self.alpha[0] * pow(d_rot_2, 2) + 
-                              #               self.alpha[1] * pow(d_trans, 2))
+        d_rot_2_hat = d_rot_2 - random.gauss(0, self.alpha[0] * pow(d_rot_2, 2) + 
+                                             self.alpha[1] * pow(d_trans, 2))
 
         x     = particle_pose[0] + d_trans_hat * math.cos(particle_pose[2] + d_rot_1_hat)
         y     = particle_pose[1] + d_trans_hat * math.sin(particle_pose[2] + d_rot_1_hat)
@@ -238,9 +242,7 @@ class MCL(object):
         :param measurement: List of the range scans
         :returns: Likelihood of measurements
         """
-        const_2_pi = 2 * math.pi
         angle_increment = math.pi / nbr_scans
-        #angle_increment = const_2_pi / nbr_scans
         list_increment = int(360 / nbr_scans)
         points = np.empty((0,2))
         for i in range(nbr_scans):
@@ -248,8 +250,7 @@ class MCL(object):
 
             # Discard measurements outside of range
             if measurement[x] < 40: #TODO: specify as parameter instead
-                heading = util.normalize_angle(self.pose[2] - math.pi + i * angle_increment + (math.pi / 2.0))
-                #heading = (self.pose[2] + measurement_headings[i]) % const_2_pi
+                heading = util.normalize_angle(self.pose[2] + i * angle_increment - (math.pi / 2.0))
                 point_x = particle_pose[0] + math.cos(heading) * measurement[x]
                 point_y = particle_pose[1] + math.sin(heading) * measurement[x]
                 point = np.array([[point_x,point_y]])
@@ -257,12 +258,33 @@ class MCL(object):
 
         p = self.model.classify(points)
         p_list = []
+        sensor_failure_likelihood = 0.002 #TODO: remove hardcoding from uniform distribution
         for i in p[:,0]:
-            p_list.append(truncnorm.pdf(i, self.a,self.b, loc=self.tn_mean, scale=self.tn_std))
+            hit_likelihood = truncnorm.pdf(i, self.a,self.b, loc=self.tn_mean, scale=self.tn_std)
+            if hit_likelihood < sensor_failure_likelihood:
+                p_list.append(sensor_failure_likelihood)
+            else:
+                p_list.append(hit_likelihood)
 
         q = np.prod(p_list)
         return q
-        
+
+    def resample(self):
+        """ Resamples the particle set according to importance weights """
+        factor = 1.0 / self.nbr_particles
+        r = random.uniform(0.0, factor)
+        aux_particles = []
+        c = self.particles[0].weight
+        i = 0
+        for m in range(self.nbr_particles):
+            U = r + m * factor
+            while U > c:
+                i += 1
+                c += self.particles[i].weight
+            particle = copy.copy(self.particles[i])
+            particle.weight = factor
+            aux_particles.append(particle)
+        self.particles = aux_particles.copy()
 
     def beam_likelihood_model(self, particle_pose, measurement_distances, nbr_scans = 8):
         """ """
@@ -287,23 +309,6 @@ class MCL(object):
             p.append(n * math.exp(- pow(measurement_distances[x] - expected_distances[i], 2) / (2 * n)))
 
         return math.prod(p)
-
-    def resample(self):
-        """ Resamples the particle set according to importance weights """
-        factor = 1.0 / self.nbr_particles
-        r = random.uniform(0.0, factor)
-        aux_particles = []
-        c = self.particles[0].weight
-        i = 0
-        for m in range(self.nbr_particles):
-            U = r + m * factor
-            while U > c:
-                i += 1
-                c += self.particles[i].weight
-            particle = copy.copy(self.particles[i])
-            particle.weight = factor
-            aux_particles.append(particle)
-        self.particles = aux_particles.copy()
 
 
 
