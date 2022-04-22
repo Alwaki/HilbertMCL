@@ -122,10 +122,6 @@ class MCL(object):
                 x_list = [o.pose[0] for o in self.particles]
                 y_list = [o.pose[1] for o in self.particles]
                 plt.clf()
-                """dx = self.map_limits[1] - self.map_limits[0]
-                dy = self.map_limits[3] - self.map_limits[2]
-                screen = (self.map_limits[0], self.map_limits[2], dx, dy)
-                plt.axes(screen)"""
                 plt.xlim([self.map_limits[0],self.map_limits[1]])
                 plt.ylim([self.map_limits[2],self.map_limits[3]])
                 plt.scatter(x_list, y_list)
