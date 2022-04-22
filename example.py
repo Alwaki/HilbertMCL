@@ -172,7 +172,8 @@ def main():
 
 
     # Load data and split it into training and testing data
-    train_data, test_data = util.create_test_train_split(args.logfile, 0.1)
+    train_data, test_data = util.create_test_train_split(args.logfile, 0.4)
+    train_data = util.create_test_data(args.logfile)
 
     # Train the desired model on the data
     if args.feature == "sparse":
