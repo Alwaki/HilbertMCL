@@ -31,7 +31,10 @@ class MCL(object):
         self.nbr_particles = nbr_particles
         self.alpha = alpha
         self.ray_resolution = 0.5
-        self.sensor_variance = 0.001
+        self.sensor_variance = 0.5
+        self.uniform_limit = 0.01
+        self.max_range = 40
+        self.range_boost = 0.244
 
         # Classifier model
         self.model = classifier
@@ -245,16 +248,16 @@ class MCL(object):
             x = i * list_increment
 
             # Discard measurements outside of range
-            if measurement[x] < 40: #TODO: specify as parameter instead
+            if measurement[x] < self.max_range:
                 heading = util.normalize_angle(particle_pose[2] + i * angle_increment - (math.pi / 2.0))
-                point_x = particle_pose[0] + math.cos(heading) * measurement[x]
-                point_y = particle_pose[1] + math.sin(heading) * measurement[x]
+                point_x = particle_pose[0] + math.cos(heading) * (measurement[x] + self.range_boost)
+                point_y = particle_pose[1] + math.sin(heading) * (measurement[x] + self.range_boost)
                 point = np.array([[point_x,point_y]])
                 points = np.append(points, point, axis=0)
 
         p = self.model.classify(points)
         p_list = []
-        sensor_failure_likelihood = 0.002 #TODO: remove hardcoding from uniform distribution
+        sensor_failure_likelihood = self.uniform_limit 
         for i in p[:,1]:
             hit_likelihood = truncnorm.pdf(i, self.a,self.b, loc=self.tn_mean, scale=self.tn_std)
             if hit_likelihood < sensor_failure_likelihood:
