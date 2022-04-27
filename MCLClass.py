@@ -246,7 +246,7 @@ class MCL(object):
 
             # Discard measurements outside of range
             if measurement[x] < 40: #TODO: specify as parameter instead
-                heading = util.normalize_angle(self.pose[2] + i * angle_increment - (math.pi / 2.0))
+                heading = util.normalize_angle(particle_pose[2] + i * angle_increment - (math.pi / 2.0))
                 point_x = particle_pose[0] + math.cos(heading) * measurement[x]
                 point_y = particle_pose[1] + math.sin(heading) * measurement[x]
                 point = np.array([[point_x,point_y]])
