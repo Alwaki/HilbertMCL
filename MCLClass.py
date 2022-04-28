@@ -84,7 +84,7 @@ class MCL(object):
                 scans = [float(v) for v in arr[2:2+count]]
                 ground_truth = [float(v) for v in arr[-9:-6]]
                 ground_truth[2] = util.normalize_angle(ground_truth[2])
-
+                
                 # Use scans for bayesian correction update
                 self.propagate(1, scans)
 
@@ -94,7 +94,7 @@ class MCL(object):
                 # Check ESS, and then resample if particle set degenerate
                 if(self.calculate_ESS() < self.nbr_particles/2):
                     self.resample()
-
+                
                 # Use ground truth to generate error
                 euclidean_error = math.hypot(ground_truth[0]-self.pose[0],ground_truth[1]-self.pose[1])
                 angular_error = abs(ground_truth[2]-self.pose[2])
@@ -296,7 +296,7 @@ class MCL(object):
         # Calculate expected distances through raycasting
         for i in range(nbr_scans):
             theta = i * angle_increment
-            heading = (self.pose[2] + theta - (math.pi / 2))
+            heading = (particle_pose[2] + theta - (math.pi / 2))
             heading = util.normalize_angle(heading)
             expected_distance = self.raycast(particle_pose[0:2], heading, self.ray_resolution)
             expected_distances.append(expected_distance)
@@ -323,7 +323,7 @@ class MCL(object):
         dy = resolution * math.sin(heading)
         position = np.reshape(starting_position, [1, -1])
         count = 0
-        while(count < 50):
+        while(count < 40):
             position[0][0] += dx
             position[0][1] += dy
             probability = self.model.classify(position)
