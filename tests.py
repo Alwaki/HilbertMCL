@@ -13,8 +13,7 @@ import time
 
 import hilbert_map as hm
 import util
-from MCLClass import *
-from util_changed import create_test_data, generate_map
+from MCLlikelihood_test import *
 
 #########################################################
 #
@@ -33,7 +32,7 @@ distance_cutoff = 0.001
 # Load data and split it into training and testing data
 train_data, test_data = util.create_test_train_split(logfile, train_percentage)
 
-full_train_data = create_test_data(logfile)
+full_train_data = util.create_test_data(logfile)
 
 
 # Extract poses and scans from the data
@@ -58,9 +57,17 @@ time1 = time.time()
 #########################################################
 count = 0
 
+train_x = []
+train_y = []
+
 
 for data, label in util.data_generator(poses, scans):
     model.add(data, label)
+    for i in range(label.size):
+        if label[i] == 1:
+            coordinate = data[i]
+            train_x.append(coordinate[0])
+            train_y.append(coordinate[1])
 
     sys.stdout.write("\rTraining model: {: 6.2f}%".format(count / float(len(poses)-1) * 100))
     sys.stdout.flush()
@@ -70,6 +77,22 @@ time2 = time.time()
 dt = (time2 - time1)
 print("Training full data points took " + str(dt) + " seconds.")
 
+"""
+pose1 = np.array([[0, 0, 0]])
+scan1 = np.zeros([1,360])
+scan1[0][0] = 10.0
+scan1[0][179] = 10.0
+
+for data, label in util.data_generator(pose1, scan1):
+    model.add(data, label)
+
+point1 = np.array([[0, -10]])
+point2 = np.array([[0, 10]])
+point3 = np.array([[0, -10],[0, 10], [0,0]])
+print(model.classify(point1))
+print(model.classify(point2))
+print(model.classify(point3))
+"""
 
 
 ######################################
@@ -120,6 +143,10 @@ plt.show()
 
 # Test map
 """
+full_x = []
+full_y = []
+ground_x = []
+ground_y = []
 for line in open(logfile):
     x_list = []
     y_list = []
@@ -129,22 +156,26 @@ for line in open(logfile):
         count = int(arr[1])
         scans = [float(v) for v in arr[2:2+count]]
         ground_truth = [float(v) for v in arr[-9:-6]]
-        plt.clf()
+        angle_increment = math.pi / len(scans)
+
         for i in range(len(scans)):
-            heading = (ground_truth[2] + (i * 2 * math.pi / len(scans))) % (2 * math.pi)
-            x = ground_truth[0] + math.cos(heading) * scans[i]
-            y = ground_truth[1] + math.sin(heading) * scans[i]
-            x_list.append(x)
-            y_list.append(y)
+            if scans[i] < 40:
+                heading = ground_truth[2] + i * angle_increment - (math.pi / 2.0)
+                x = ground_truth[0] + math.cos(heading) * scans[i]
+                y = ground_truth[1] + math.sin(heading) * scans[i]
+                full_x.append(x)
+                full_y.append(y)
+                ground_x.append(ground_truth[0])
+                ground_y.append(ground_truth[1])
     
-        plt.clf()
-        plt.scatter(x_list,y_list)
-        plt.scatter(ground_truth[0], ground_truth[1])
-        plt.pause(0.1)
-    plt.show()
-    """
+plt.clf()
+plt.scatter(full_x,full_y)
+plt.scatter(ground_x, ground_y)
+plt.pause(0.1)
+plt.show()
+"""    
 """
-generate_map(
+util.generate_map(
             model,
             0.1,
             [xlim[0], xlim[1], ylim[0], ylim[1]],
@@ -191,24 +222,30 @@ print(model.classify(test2))
 #                   Initialize filter
 #
 #########################################################
+fractions = []
+space = np.linspace(0.001,2,100)
+for i in space:
+    mcl = MCL(xlim, ylim, 5, model, [0,0,0])
+    mcl.tn_std = math.sqrt(i)
+    mcl.a, mcl.b = (mcl.a_clip - mcl.tn_mean) / mcl.tn_std, (mcl.b_clip - mcl.tn_mean) / mcl.tn_std
+    mcl.simulate(logfile, False)
+    fractions.append(mcl.frac)
+    print("Im alive!")
 
-mcl = MCL(xlim, ylim, 50, model, [0,0,0])
-mcl.simulate(logfile, False)
+#########################################################
+#
+#                   Data Plotting
+#
+#########################################################
 
-
+plt.clf()
+plt.plot(space,fractions)
+plt.show()
+"""
+plt.clf()
+plt.scatter(mcl.query_x, mcl.query_y)
+plt.scatter(train_x, train_y)
+plt.show()
 print("Euclidean error sum: " + str(np.sum(mcl.euc_error)))
-
 """
-plt.plot(mcl.euc_error)
-plt.ylabel('Error [m]')
-plt.show()
-"""
-
-
-plt.plot(mcl.x_path,mcl.y_path)
-plt.plot(mcl.x_odom, mcl.y_odom)
-plt.plot(mcl.x_truth,mcl.y_truth)
-plt.show()
-
-
 
