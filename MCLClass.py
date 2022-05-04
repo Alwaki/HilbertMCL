@@ -242,7 +242,7 @@ class MCL(object):
         :returns: Likelihood of measurements
         """
         angle_increment = math.pi / nbr_scans
-        list_increment = int(360 / nbr_scans)
+        list_increment = int(len(measurement) / nbr_scans)
         points = np.empty((0,2))
         for i in range(nbr_scans):
             x = i * list_increment
