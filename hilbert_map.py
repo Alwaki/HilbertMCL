@@ -155,6 +155,8 @@ class SparseHilbertMap(object):
             loss="log",
             penalty="elasticnet",
             alpha=0,   #0.0001,
+            learning_rate='constant',
+            eta0=0.001,
             l1_ratio=0.80,
         )
 
