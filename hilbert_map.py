@@ -154,7 +154,7 @@ class SparseHilbertMap(object):
         self.classifier = SGDClassifier(
             loss="log",
             penalty="elasticnet",
-            alpha=0.0001,
+            alpha=0,   #0.0001,
             l1_ratio=0.80,
         )
 
