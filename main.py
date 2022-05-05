@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 import time
+import pickle
 
 import hilbert_map as hm
 import util
@@ -23,11 +24,14 @@ from MCLClass import *
 
 
 # Variables
-logfile = "belgioioso.gfs.log"
+map_name = "orebro"
+logfile = "datasets/" + map_name + "_corrected.log"
+classifier_name = "classifiers/" + map_name + ".pkl"
 train_percentage = 0.1
 components = 100
 gamma = 1.0
 distance_cutoff = 0.001
+
 
 # Load data and split it into training and testing data
 train_data, test_data = util.create_test_train_split(logfile, train_percentage)
@@ -39,35 +43,45 @@ full_train_data = util.create_test_data(logfile)
 poses = full_train_data["poses"]
 scans = full_train_data["scans"]
 
- # Limits in metric space based on poses with a 10m buffer zone
-xlim, ylim = util.bounding_box(poses, 10.0)
+# Limits in metric space based on poses with a 2m buffer zone
+xlim, ylim = util.bounding_box(poses, 2.0)
 
-# Sampling locations distributed in an even grid over the area
-centers = util.sampling_coordinates(xlim, ylim, components)
+# Attempt to load classifier, otherwise perform training
+try:
+    with open(classifier_name, 'rb') as inp:
+        model = pickle.load(inp)
+except:
+    # Sampling locations distributed in an even grid over the area
+    centers = util.sampling_coordinates(xlim, ylim, components)
 
-# Create model
-model = hm.SparseHilbertMap(centers, gamma, distance_cutoff)
+    # Create model
+    model = hm.SparseHilbertMap(centers, gamma, distance_cutoff)
 
-time1 = time.time()
+    time1 = time.time()
 
-#########################################################
-#
-#                   Train model
-#
-#########################################################
-count = 0
+    #########################################################
+    #
+    #                   Train model
+    #
+    #########################################################
+    count = 0
 
 
-for data, label in util.data_generator(poses, scans):
-    model.add(data, label)
+    for data, label in util.data_generator(poses, scans):
+        model.add(data, label)
 
-    sys.stdout.write("\rTraining model: {: 6.2f}%".format(count / float(len(poses)-1) * 100))
-    sys.stdout.flush()
-    count += 1
-print("")
-time2 = time.time()
-dt = (time2 - time1)
-print("Training full data points took " + str(dt) + " seconds.")
+        sys.stdout.write("\rTraining model: {: 6.2f}%".format(count / float(len(poses)-1) * 100))
+        sys.stdout.flush()
+        count += 1
+    print("")
+
+    time2 = time.time()
+    dt = (time2 - time1)
+    print("Training full data points took " + str(dt) + " seconds.")
+
+    with open('classifiers/orebro.pkl', 'wb') as outp:
+        pickle.dump(model, outp, pickle.HIGHEST_PROTOCOL)
+
 
 #########################################################
 #
@@ -76,7 +90,7 @@ print("Training full data points took " + str(dt) + " seconds.")
 #########################################################
 
 mcl = MCL(xlim, ylim, 50, model, [0,0,0])
-mcl.simulate(logfile, False)
+mcl.simulate(logfile, True)
 
 #########################################################
 #
