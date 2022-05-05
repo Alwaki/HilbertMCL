@@ -10,7 +10,7 @@ import copy
 class MCL(object):
     """ Localization class using particle filter """
 
-    def __init__(self, xlim, ylim, nbr_particles, classifier, pose = [], alpha = [0.1, 0.01, 0.1, 0.01]):
+    def __init__(self, xlim, ylim, nbr_particles, classifier, pose = [], alpha = [0.01, 0.001, 0.01, 0.001]):
         """ Instantiates the class 
         :param xlim: horizontal borders of map [x1, x2]
         :param ylim: vertical borders of map [y1, y2]
@@ -29,12 +29,14 @@ class MCL(object):
 
         # Filter parameters
         self.nbr_particles = nbr_particles
+        self.nbr_scans = 8
         self.alpha = alpha
-        self.ray_resolution = 0.5
+        self.ray_resolution = 0.25
         self.sensor_variance = 0.5
         self.uniform_limit = 0.01
         self.max_range = 40
         self.range_boost = 0.244
+        self.raycast_probability_limit = 0.98
 
         # Classifier model
         self.model = classifier
@@ -170,7 +172,7 @@ class MCL(object):
                 # Calculate importance weight
                 
                 self.particles[i].weight *= self.point_likelihood_model(self.particles[i].pose, measurement)
-                """                                             
+                """                                          
                 self.particles[i].weight *= self.beam_likelihood_model(self.particles[i].pose, measurement)
                 """
             
@@ -235,16 +237,16 @@ class MCL(object):
         ESS = 1.0/np.inner(weights,weights)
         return ESS
 
-    def point_likelihood_model(self, particle_pose, measurement, nbr_scans = 8):
+    def point_likelihood_model(self, particle_pose, measurement):
         """ Observation model which classifies the end point of the measurements 
         :param particle_pose: The position and heading of the particle
         :param measurement: List of the range scans
         :returns: Likelihood of measurements
         """
-        angle_increment = math.pi / nbr_scans
-        list_increment = int(len(measurement) / nbr_scans)
+        angle_increment = math.pi / self.nbr_scans
+        list_increment = int(len(measurement) / self.nbr_scans)
         points = np.empty((0,2))
-        for i in range(nbr_scans):
+        for i in range(self.nbr_scans):
             x = i * list_increment
 
             # Discard measurements outside of range
@@ -285,54 +287,57 @@ class MCL(object):
             aux_particles.append(particle)
         self.particles = aux_particles.copy()
 
-    def beam_likelihood_model(self, particle_pose, measurement_distances, nbr_scans = 8):
+    def beam_likelihood_model(self, particle_pose, measurements):
         """ """
-        angle_increment = math.pi / nbr_scans
-        list_increment = int(360 / nbr_scans)
+        angle_increment = math.pi / self.nbr_scans
+        list_increment = int(len(measurements) / self.nbr_scans)
         n = 1.0 / math.sqrt(2 * math.pi * self.sensor_variance)
         expected_distances = []
         p = []
 
         # Calculate expected distances through raycasting
-        for i in range(nbr_scans):
+        for i in range(self.nbr_scans):
             theta = i * angle_increment
             heading = (particle_pose[2] + theta - (math.pi / 2))
             heading = util.normalize_angle(heading)
-            expected_distance = self.raycast(particle_pose[0:2], heading, self.ray_resolution)
+            expected_distance = self.raycast(particle_pose, heading)
             expected_distances.append(expected_distance)
 
         # Calculate likelihoods through beam hit model
-        for i in range(nbr_scans):
+        for i in range(self.nbr_scans):
             x = i * list_increment
-            p.append(n * math.exp(- pow(measurement_distances[x] - expected_distances[i], 2) / (2 * n)))
+            p.append(n * math.exp(- pow(measurements[x] - expected_distances[i], 2) / (2 * n)))
 
         return math.prod(p)
 
-
-
-    def raycast(self, starting_position, heading, resolution):
+    def raycast(self, starting_pose, heading):
         """ Traces a line in a given direction from a given point, checking occupancy 
-        :param starting_position: where the line begins from, in [x, y]
-        :param heading: direction of line in radians
-        :type heading: float
-        :param resolution: interval of checking occupancy along the line
-        :type resolution: float
-        :returns: point of first detected occupancy, or empty list if no detection
+        :param starting_pose: where the line begins from, in [x, y, theta]
+        :returns: point of first detected occupancy, or -1 if no detection
         """
-        dx = resolution * math.cos(heading)
-        dy = resolution * math.sin(heading)
-        position = np.reshape(starting_position, [1, -1])
-        count = 0
-        while(count < 40):
+        dx = self.ray_resolution * math.cos(heading)
+        dy = self.ray_resolution * math.sin(heading)
+        position = np.reshape(starting_pose[0:2], [1, -1])
+        distance = 0
+        old_probability = 0
+        while(distance < self.max_range):
             position[0][0] += dx
             position[0][1] += dy
+            if distance:
+                old_probability = probability
             probability = self.model.classify(position)
-            count += 1
-            if probability[0][0] >= 0.98:
-                distance = math.hypot(position[0][0]-starting_position[0], position[0][1] - starting_position[1])
-                return distance
+            distance += self.ray_resolution
+            if probability[0][0] >= self.raycast_probability_limit:
+                if old_probability > 0:
+                    d1 = probability - self.raycast_probability_limit
+                    d2 = probability - last_probability
+                    interpolation_factor = d1/d2
+                    position[0][0] -= interpolation_factor * dx
+                    position[0][1] -= interpolation_factor * dy
+                ray_distance = math.hypot(position[0][0]-starting_position[0], position[0][1] - starting_position[1])
+                return ray_distance
 
-        return 40
+        return self.max_range
                 
 
 
