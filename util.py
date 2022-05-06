@@ -451,3 +451,45 @@ def generate_map(model, resolution, limits, fname, verbose=True):
     plt.imshow(mat.transpose()[::-1, :], cmap='binary')
     plt.colorbar()
     plt.savefig(fname)
+
+def generate_temp_map(model, resolution, limits, verbose=True):
+    """Generates a grid map by querying the model at cell locations.
+
+    :param model the hilbert map model to use
+    :param resolution the resolution of the produced grid map
+    :param limits the limits of the grid map
+    :param verbose print progress if True
+    """
+    # Determine query point locations
+    x_count = int(math.ceil((limits[1] - limits[0]) / resolution))
+    y_count = int(math.ceil((limits[3] - limits[2]) / resolution))
+    sample_coords = []
+    for x in range(x_count):
+        for y in range(y_count):
+            sample_coords.append((limits[0] + x*resolution, limits[2] + y*resolution))
+
+    # Obtain predictions in a batch fashion
+    predictions = []
+    offset = 0
+    batch_size = 100
+    old_intercept = copy.deepcopy(model.classifier.intercept_)
+    model.classifier.intercept_ = 0.1 * model.classifier.intercept_
+    while offset < len(sample_coords):
+        if isinstance(model, hm.IncrementalHilbertMap):
+            query = model.sampler.transform(sample_coords[offset:offset+batch_size])
+            predictions.extend(model.classifier.predict_proba(query)[:, 1])
+        elif isinstance(model, hm.SparseHilbertMap):
+            predictions.extend(model.classify(sample_coords[offset:offset+batch_size])[:, 1])
+
+        if verbose:
+            sys.stdout.write("\rQuerying model: {: 6.2f}%".format(offset / float(len(sample_coords)) * 100))
+            sys.stdout.flush()
+        offset += batch_size
+    if verbose:
+        print("")
+    predictions = np.array(predictions)
+    model.classifier.intercept_ = old_intercept
+
+    # Turn predictions into a matrix for visualization
+    mat = predictions.reshape(x_count, y_count)
+    return mat
