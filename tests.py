@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 import time
+import pickle
 
 import hilbert_map as hm
 import util
@@ -23,11 +24,15 @@ from MCLlikelihood_test import *
 
 
 # Variables
-logfile = "belgioioso.gfs.log"
+map_name = "freiburg_campus"
 train_percentage = 0.1
 components = 100
 gamma = 1.0
 distance_cutoff = 0.001
+
+# Setting up file namespaces
+logfile = "datasets/" + map_name + "_corrected.log"
+classifier_name = "classifiers/" + map_name + ".pkl"
 
 # Load data and split it into training and testing data
 train_data, test_data = util.create_test_train_split(logfile, train_percentage)
@@ -39,44 +44,37 @@ full_train_data = util.create_test_data(logfile)
 poses = full_train_data["poses"]
 scans = full_train_data["scans"]
 
- # Limits in metric space based on poses with a 10m buffer zone
-xlim, ylim = util.bounding_box(poses, 10.0)
+# Limits in metric space based on poses with a 2m buffer zone
+xlim, ylim = util.bounding_box(poses, 2.0)
 
-# Sampling locations distributed in an even grid over the area
-centers = util.sampling_coordinates(xlim, ylim, components)
+# Attempt to load classifier model, otherwise perform training
+try:
+    with open(classifier_name, 'rb') as inp:
+        model = pickle.load(inp)
+except:
+    # Sampling locations distributed in an even grid over the area
+    centers = util.sampling_coordinates(xlim, ylim, components)
 
-# Create model
-model = hm.SparseHilbertMap(centers, gamma, distance_cutoff)
+    # Create model
+    model = hm.SparseHilbertMap(centers, gamma, distance_cutoff)
 
-time1 = time.time()
+    time1 = time.time()
+    count = 0
 
-#########################################################
-#
-#                   Train model
-#
-#########################################################
-count = 0
+    for data, label in util.data_generator(poses, scans):
+        model.add(data, label)
 
-train_x = []
-train_y = []
+        sys.stdout.write("\rTraining model: {: 6.2f}%".format(count / float(len(poses)-1) * 100))
+        sys.stdout.flush()
+        count += 1
+    print("")
 
+    time2 = time.time()
+    dt = (time2 - time1)
+    print("Training full data points took " + str(dt) + " seconds.")
 
-for data, label in util.data_generator(poses, scans):
-    model.add(data, label)
-    for i in range(label.size):
-        if label[i] == 1:
-            coordinate = data[i]
-            train_x.append(coordinate[0])
-            train_y.append(coordinate[1])
-
-    sys.stdout.write("\rTraining model: {: 6.2f}%".format(count / float(len(poses)-1) * 100))
-    sys.stdout.flush()
-    count += 1
-print("")
-time2 = time.time()
-dt = (time2 - time1)
-print("Training full data points took " + str(dt) + " seconds.")
-
+    with open(classifier_name, 'wb') as outp:
+        pickle.dump(model, outp, pickle.HIGHEST_PROTOCOL)
 """
 pose1 = np.array([[0, 0, 0]])
 scan1 = np.zeros([1,360])
@@ -98,10 +96,6 @@ print(model.classify(point3))
 ######################################
 # Use this model for localization now!
 ######################################
-
-# Extract poses and scans from the data
-poses2 = test_data["poses"]
-scans2 = test_data["scans"]
 
 
 #########################################################
@@ -142,7 +136,7 @@ plt.show()
 """
 
 # Test map
-"""
+
 full_x = []
 full_y = []
 ground_x = []
@@ -173,15 +167,15 @@ plt.scatter(full_x,full_y)
 plt.scatter(ground_x, ground_y)
 plt.pause(0.1)
 plt.show()
-"""    
-"""
+
+
 util.generate_map(
             model,
             0.1,
             [xlim[0], xlim[1], ylim[0], ylim[1]],
             "hilbert_map.png"
     )
-"""
+    
 
 #########################################################
 #
@@ -222,6 +216,7 @@ print(model.classify(test2))
 #                   Initialize filter
 #
 #########################################################
+"""
 fractions = []
 space = np.linspace(0.001,2,100)
 for i in space:
@@ -231,16 +226,17 @@ for i in space:
     mcl.simulate(logfile, False)
     fractions.append(mcl.frac)
     print("Im alive!")
-
+    """
 #########################################################
 #
 #                   Data Plotting
 #
 #########################################################
-
+"""
 plt.clf()
 plt.plot(space,fractions)
 plt.show()
+"""
 """
 plt.clf()
 plt.scatter(mcl.query_x, mcl.query_y)
