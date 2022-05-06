@@ -10,7 +10,7 @@ import copy
 class MCL(object):
     """ Localization class using particle filter """
 
-    def __init__(self, xlim, ylim, nbr_particles, classifier, pose = [], alpha = [0.01, 0.001, 0.01, 0.001]):
+    def __init__(self, xlim, ylim, nbr_particles, classifier, pose = [], alpha = [0.1, 0.01, 0.1, 0.01]):
         """ Instantiates the class 
         :param xlim: horizontal borders of map [x1, x2]
         :param ylim: vertical borders of map [y1, y2]
@@ -37,6 +37,7 @@ class MCL(object):
         self.max_range = 40
         self.range_boost = 0.244
         self.raycast_probability_limit = 0.98
+        self.gradient_distance = 0.05
 
         # Classifier model
         self.model = classifier
@@ -170,9 +171,11 @@ class MCL(object):
             for i in range(self.nbr_particles):
 
                 # Calculate importance weight
-                
+                self.particles[i].weight *= self.gradient_likelihood_model(self.particles[i].pose, measurement)
+                """
                 self.particles[i].weight *= self.point_likelihood_model(self.particles[i].pose, measurement)
-                """                                          
+                """
+                """
                 self.particles[i].weight *= self.beam_likelihood_model(self.particles[i].pose, measurement)
                 """
             
@@ -236,6 +239,43 @@ class MCL(object):
         weights = [o.weight for o in self.particles]
         ESS = 1.0/np.inner(weights,weights)
         return ESS
+
+    def gradient_likelihood_model(self, particle_pose, measurement):
+        """ Observation model which classifies the end point of the measurements 
+        :param particle_pose: The position and heading of the particle
+        :param measurement: List of the range scans
+        :returns: Likelihood of measurements
+        """
+        angle_increment = math.pi / self.nbr_scans
+        list_increment = int(len(measurement) / self.nbr_scans)
+        points_1 = np.empty((0,2))
+        points_2 = np.empty((0,2))
+        for i in range(self.nbr_scans):
+            x = i * list_increment
+
+            # Discard measurements outside of range
+            if measurement[x] < self.max_range:
+                heading = util.normalize_angle(particle_pose[2] + i * angle_increment - (math.pi / 2.0))
+                point_1_x = particle_pose[0] + math.cos(heading) * measurement[x]
+                point_1_y = particle_pose[1] + math.sin(heading) * measurement[x]
+                point_2_x = particle_pose[0] + math.cos(heading) * (measurement[x] - self.gradient_distance)
+                point_2_y = particle_pose[1] + math.sin(heading) * (measurement[x] - self.gradient_distance)
+
+                point_1 = np.array([[point_1_x,point_1_y]])
+                point_2 = np.array([[point_2_x,point_2_y]])
+                points_1 = np.append(points_1, point_1, axis=0)
+                points_2 = np.append(points_2, point_2, axis=0)
+
+        p_1 = self.model.classify(points_1)
+        p_2 = self.model.classify(points_2)
+
+        p = (p_2 - p_1) / self.gradient_distance
+
+        q = np.prod(p)
+        return q
+
+
+
 
     def point_likelihood_model(self, particle_pose, measurement):
         """ Observation model which classifies the end point of the measurements 
