@@ -25,13 +25,14 @@ from MCLClass import *
 
 # Variables
 map_name = "orebro"
-logfile = "datasets/" + map_name + "_corrected.log"
-classifier_name = "classifiers/" + map_name + ".pkl"
 train_percentage = 0.1
 components = 100
 gamma = 1.0
 distance_cutoff = 0.001
 
+# Setting up file namespaces
+logfile = "datasets/" + map_name + "_corrected.log"
+classifier_name = "classifiers/" + map_name + ".pkl"
 
 # Load data and split it into training and testing data
 train_data, test_data = util.create_test_train_split(logfile, train_percentage)
@@ -46,7 +47,7 @@ scans = full_train_data["scans"]
 # Limits in metric space based on poses with a 2m buffer zone
 xlim, ylim = util.bounding_box(poses, 2.0)
 
-# Attempt to load classifier, otherwise perform training
+# Attempt to load classifier model, otherwise perform training
 try:
     with open(classifier_name, 'rb') as inp:
         model = pickle.load(inp)
@@ -58,14 +59,7 @@ except:
     model = hm.SparseHilbertMap(centers, gamma, distance_cutoff)
 
     time1 = time.time()
-
-    #########################################################
-    #
-    #                   Train model
-    #
-    #########################################################
     count = 0
-
 
     for data, label in util.data_generator(poses, scans):
         model.add(data, label)
