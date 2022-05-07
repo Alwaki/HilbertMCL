@@ -26,7 +26,7 @@ from MCLClass import *
 # Variables
 map_name = "orebro"
 train_percentage = 0.1
-components = 100
+components = 200
 gamma = 1.0
 distance_cutoff = 0.001
 
@@ -73,7 +73,7 @@ except:
     dt = (time2 - time1)
     print("Training full data points took " + str(dt) + " seconds.")
 
-    with open('classifiers/orebro.pkl', 'wb') as outp:
+    with open(classifier_name, 'wb') as outp:
         pickle.dump(model, outp, pickle.HIGHEST_PROTOCOL)
 
 
@@ -83,7 +83,7 @@ except:
 #
 #########################################################
 
-mcl = MCL(xlim, ylim, 50, model, [0,0,0])
+mcl = MCL(xlim, ylim, 100, model, [0, 0, 0])
 mcl.simulate(logfile, True)
 
 #########################################################
